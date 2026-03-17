@@ -20,40 +20,53 @@ def load_data(path, sample_size=None):
         )
         print("Full dataset loaded.", flush=True)
     else:
-        chunks = []
-        collected = 0
-        chunk_size = 50000
-        samples_per_chunk = 5000
+        target_per_class = sample_size // 2
+        neg_parts = []
+        pos_parts = []
+        neg_count = 0
+        pos_count = 0
 
         for chunk in pd.read_csv(
             path,
             encoding="latin-1",
             header=None,
             usecols=[0, 5],
-            chunksize=chunk_size
+            chunksize=50000
         ):
-            need = sample_size - collected
-            if need <= 0:
+            chunk.columns = ["polarity", "text"]
+
+            # keep only 0 and 4
+            chunk = chunk[chunk["polarity"].isin([0, 4])].copy()
+
+            neg_chunk = chunk[chunk["polarity"] == 0]
+            pos_chunk = chunk[chunk["polarity"] == 4]
+
+            if neg_count < target_per_class and not neg_chunk.empty:
+                need_neg = min(target_per_class - neg_count, len(neg_chunk))
+                neg_parts.append(neg_chunk.sample(n=need_neg, random_state=42))
+                neg_count += need_neg
+
+            if pos_count < target_per_class and not pos_chunk.empty:
+                need_pos = min(target_per_class - pos_count, len(pos_chunk))
+                pos_parts.append(pos_chunk.sample(n=need_pos, random_state=42))
+                pos_count += need_pos
+
+            if neg_count >= target_per_class and pos_count >= target_per_class:
                 break
 
-            take = min(len(chunk), samples_per_chunk, need)
-            chunk_sample = chunk.sample(n=take, random_state=42)
-            chunks.append(chunk_sample)
-            collected += take
+        if neg_count == 0 or pos_count == 0:
+            raise ValueError(
+                f"Balanced sample create nahi hua. Negative: {neg_count}, Positive: {pos_count}"
+            )
 
-            if collected >= sample_size:
-                break
+        df = pd.concat(neg_parts + pos_parts, ignore_index=True)
+        print(
+            f"Collected balanced sample -> Negative: {neg_count}, Positive: {pos_count}",
+            flush=True
+        )
 
-        if not chunks:
-            raise ValueError("No data could be sampled from the dataset.")
-
-        df = pd.concat(chunks, ignore_index=True)
-        print(f"Collected approx {len(df)} sampled rows from chunks.", flush=True)
-
-    df.columns = ["polarity", "text"]
-
-    # Remove neutral tweets
-    df = df[df["polarity"] != 2].copy()
+    if "polarity" not in df.columns or "text" not in df.columns:
+        df.columns = ["polarity", "text"]
 
     # Convert labels: 0 = negative, 4 = positive -> 0, 1
     df["polarity"] = df["polarity"].map({0: 0, 4: 1})
@@ -71,7 +84,6 @@ def load_data(path, sample_size=None):
 
 
 def preprocess_text_series(text_series):
-    # Basic cleaning
     return text_series.astype(str).str.lower().str.strip()
 
 
