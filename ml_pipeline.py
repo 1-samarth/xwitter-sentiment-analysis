@@ -11,18 +11,7 @@ from sklearn.metrics import accuracy_score, confusion_matrix
 def load_data(path, sample_size=None):
     print("Loading dataset...", flush=True)
 
-    # Sirf required columns read karo
-    # sample_size diya ho to utni hi rows load karo
-    if sample_size is not None:
-        df = pd.read_csv(
-            path,
-            encoding="latin-1",
-            header=None,
-            usecols=[0, 5],
-            nrows=sample_size
-        )
-        print(f"Loaded first {sample_size} rows for faster training.", flush=True)
-    else:
+    if sample_size is None:
         df = pd.read_csv(
             path,
             encoding="latin-1",
@@ -30,6 +19,36 @@ def load_data(path, sample_size=None):
             usecols=[0, 5]
         )
         print("Full dataset loaded.", flush=True)
+    else:
+        chunks = []
+        collected = 0
+        chunk_size = 50000
+        samples_per_chunk = 5000
+
+        for chunk in pd.read_csv(
+            path,
+            encoding="latin-1",
+            header=None,
+            usecols=[0, 5],
+            chunksize=chunk_size
+        ):
+            need = sample_size - collected
+            if need <= 0:
+                break
+
+            take = min(len(chunk), samples_per_chunk, need)
+            chunk_sample = chunk.sample(n=take, random_state=42)
+            chunks.append(chunk_sample)
+            collected += take
+
+            if collected >= sample_size:
+                break
+
+        if not chunks:
+            raise ValueError("No data could be sampled from the dataset.")
+
+        df = pd.concat(chunks, ignore_index=True)
+        print(f"Collected approx {len(df)} sampled rows from chunks.", flush=True)
 
     df.columns = ["polarity", "text"]
 
@@ -42,6 +61,10 @@ def load_data(path, sample_size=None):
     # Null values remove
     df = df.dropna(subset=["text", "polarity"])
 
+    # Final shuffle
+    df = df.sample(frac=1, random_state=42).reset_index(drop=True)
+
+    print("Class distribution:", df["polarity"].value_counts().to_dict(), flush=True)
     print(f"Final usable rows: {len(df)}", flush=True)
 
     return df
@@ -82,9 +105,9 @@ def train_model(model_name, X_train, y_train):
     if model_name == "BernoulliNB":
         model = BernoulliNB()
     elif model_name == "SVM":
-        model = LinearSVC(max_iter=2000)
+        model = LinearSVC(max_iter=3000)
     elif model_name == "Logistic Regression":
-        model = LogisticRegression(max_iter=500)
+        model = LogisticRegression(max_iter=1000)
     else:
         raise ValueError(f"Unsupported model name: {model_name}")
 

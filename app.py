@@ -160,6 +160,7 @@ if st.session_state["df"] is not None:
     st.subheader("📈 Tweet Sentiment Counts")
     st.write(f"Positive Tweets: {pos_count}")
     st.write(f"Negative Tweets: {neg_count}")
+    st.write("Class distribution:", df["polarity"].value_counts().to_dict())
 
     # ------------------ Model Selection ------------------
     st.subheader("🤖 Choose Model")
@@ -175,37 +176,42 @@ if st.session_state["df"] is not None:
     )
 
     if train_clicked:
-        status_box = st.empty()
-        result_box = st.empty()
+        unique_classes = df["polarity"].nunique()
 
-        status_box.info("Training started...")
+        if unique_classes < 2:
+            st.error("Training ke liye kam se kam 2 classes chahiye. Dataset sampling issue hai.")
+        else:
+            status_box = st.empty()
+            result_box = st.empty()
 
-        X_train, X_test, y_train, y_test, vectorizer = preprocess_and_split(df)
+            status_box.info("Training started...")
 
-        status_box.info(f"Preprocessing complete. Now training {model_choice}...")
-        model = train_model(model_choice, X_train, y_train)
+            X_train, X_test, y_train, y_test, vectorizer = preprocess_and_split(df)
 
-        status_box.info("Training complete. Running evaluation...")
-        acc, cm, preds = evaluate_model(model, X_test, y_test)
+            status_box.info(f"Preprocessing complete. Now training {model_choice}...")
+            model = train_model(model_choice, X_train, y_train)
 
-        status_box.success("Evaluation done.")
+            status_box.info("Training complete. Running evaluation...")
+            acc, cm, preds = evaluate_model(model, X_test, y_test)
 
-        # Save trained objects
-        st.session_state["vectorizer"] = vectorizer
-        st.session_state["model"] = model
-        st.session_state["trained_model_name"] = model_choice
+            status_box.success("Evaluation done.")
 
-        with result_box.container():
-            st.subheader("✅ Model Accuracy")
-            st.success(f"{acc * 100:.2f}%")
+            # Save trained objects
+            st.session_state["vectorizer"] = vectorizer
+            st.session_state["model"] = model
+            st.session_state["trained_model_name"] = model_choice
 
-            st.subheader("📊 Confusion Matrix")
-            fig, ax = plt.subplots(figsize=(5, 4))
-            sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", ax=ax)
-            ax.set_xlabel("Predicted")
-            ax.set_ylabel("Actual")
-            ax.set_title(f"{model_choice} Confusion Matrix")
-            st.pyplot(fig)
+            with result_box.container():
+                st.subheader("✅ Model Accuracy")
+                st.success(f"{acc * 100:.2f}%")
+
+                st.subheader("📊 Confusion Matrix")
+                fig, ax = plt.subplots(figsize=(5, 4))
+                sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", ax=ax)
+                ax.set_xlabel("Predicted")
+                ax.set_ylabel("Actual")
+                ax.set_title(f"{model_choice} Confusion Matrix")
+                st.pyplot(fig)
 
     if st.session_state["trained_model_name"] is not None:
         st.info(f"Currently trained model: {st.session_state['trained_model_name']}")
