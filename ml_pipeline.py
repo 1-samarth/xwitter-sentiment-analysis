@@ -7,9 +7,66 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
 from sklearn.metrics import accuracy_score, confusion_matrix
 
+TEXT_COLUMNS = ("text", "tweet", "tweet_text", "content", "full_text", "message")
+LABEL_COLUMNS = ("polarity", "sentiment", "label", "target")
+POSITIVE_LABELS = {"1", "4", "positive", "pos"}
+NEGATIVE_LABELS = {"0", "negative", "neg"}
+
+
+def _find_column(columns, candidates):
+    normalized = {str(column).strip().lower(): column for column in columns}
+    for candidate in candidates:
+        if candidate in normalized:
+            return normalized[candidate]
+    return None
+
+
+def _normalize_label(value):
+    normalized = str(value).strip().lower()
+    if normalized in POSITIVE_LABELS:
+        return 1
+    if normalized in NEGATIVE_LABELS:
+        return 0
+    return None
+
+
+def _normalize_export_dataframe(df):
+    text_column = _find_column(df.columns, TEXT_COLUMNS)
+    label_column = _find_column(df.columns, LABEL_COLUMNS)
+    if text_column is None:
+        return None
+    if label_column is None:
+        raise ValueError(
+            "Uploaded Xquik/export CSV needs a sentiment, polarity, label, or target column."
+        )
+
+    normalized = pd.DataFrame(
+        {
+            "text": df[text_column],
+            "polarity": df[label_column].map(_normalize_label),
+        }
+    )
+    normalized = normalized.dropna(subset=["text", "polarity"])
+    normalized["polarity"] = normalized["polarity"].astype(int)
+    return normalized
+
 
 def load_data(path, sample_size=None):
     print("Loading dataset...", flush=True)
+
+    header_df = pd.read_csv(path, encoding="latin-1")
+    normalized_export = _normalize_export_dataframe(header_df)
+    if normalized_export is not None:
+        if sample_size is not None and len(normalized_export) > sample_size:
+            normalized_export = normalized_export.sample(n=sample_size, random_state=42)
+        normalized_export = normalized_export.sample(frac=1, random_state=42).reset_index(drop=True)
+        print(
+            f"Loaded uploaded export rows: {len(normalized_export)}",
+            flush=True
+        )
+        return normalized_export
+    if hasattr(path, "seek"):
+        path.seek(0)
 
     if sample_size is None:
         df = pd.read_csv(

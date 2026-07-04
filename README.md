@@ -12,6 +12,7 @@ A machine learning web app to analyze sentiment (positive/negative) of tweets us
 ## 📌 Features
 
 - 📂 Upload your own CSV dataset
+- 📥 Upload Xquik/export CSV files with tweet text and sentiment labels
 - 📊 Use Kaggle Sentiment140 dataset (auto download)
 - 🧹 Text preprocessing (lowercase, cleaning)
 - 🤖 Multiple ML models:
@@ -29,9 +30,15 @@ A machine learning web app to analyze sentiment (positive/negative) of tweets us
 
 - **Name:** Sentiment140 Dataset  
 - **Source:** Kaggle  
-- **Size:** 1.6 million tweets  
+- **Size:** 1.6 million tweets
 
 👉 Dataset automatically downloaded using Kaggle API
+
+You can also upload Xquik exports or other CSV files that include one tweet
+text column (`text`, `tweet`, `tweet_text`, `content`, `full_text`, or
+`message`) and one label column (`sentiment`, `polarity`, `label`, or
+`target`). Labels can use `positive` / `negative`, `pos` / `neg`, or the
+Sentiment140-style `4` / `0` values.
 
 ---
 
