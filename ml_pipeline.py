@@ -9,8 +9,9 @@ from sklearn.metrics import accuracy_score, confusion_matrix
 
 TEXT_COLUMNS = ("text", "tweet", "tweet_text", "content", "full_text", "message")
 LABEL_COLUMNS = ("polarity", "sentiment", "label", "target")
-POSITIVE_LABELS = {"1", "4", "positive", "pos"}
-NEGATIVE_LABELS = {"0", "negative", "neg"}
+POSITIVE_LABELS = {"1", "1.0", "4", "4.0", "positive", "pos"}
+NEGATIVE_LABELS = {"0", "0.0", "negative", "neg"}
+CSV_ENCODINGS = ("utf-8-sig", "latin-1")
 
 
 def _find_column(columns, candidates):
@@ -51,30 +52,35 @@ def _normalize_export_dataframe(df):
     return normalized
 
 
+def _read_csv_header(path):
+    for encoding in CSV_ENCODINGS:
+        if hasattr(path, "seek"):
+            path.seek(0)
+        try:
+            return pd.read_csv(path, encoding=encoding), encoding
+        except UnicodeDecodeError:
+            continue
+    raise ValueError("Uploaded CSV could not be decoded.")
+
+
 def load_data(path, sample_size=None):
     print("Loading dataset...", flush=True)
 
-    header_df = pd.read_csv(path, encoding="latin-1")
+    header_df, encoding = _read_csv_header(path)
     normalized_export = _normalize_export_dataframe(header_df)
     if normalized_export is not None:
         if sample_size is not None and len(normalized_export) > sample_size:
             normalized_export = normalized_export.sample(n=sample_size, random_state=42)
-        normalized_export = normalized_export.sample(frac=1, random_state=42).reset_index(drop=True)
-        print(
-            f"Loaded uploaded export rows: {len(normalized_export)}",
-            flush=True
-        )
+        normalized_export = normalized_export.sample(
+            frac=1, random_state=42
+        ).reset_index(drop=True)
+        print(f"Loaded uploaded export rows: {len(normalized_export)}", flush=True)
         return normalized_export
     if hasattr(path, "seek"):
         path.seek(0)
 
     if sample_size is None:
-        df = pd.read_csv(
-            path,
-            encoding="latin-1",
-            header=None,
-            usecols=[0, 5]
-        )
+        df = pd.read_csv(path, encoding=encoding, header=None, usecols=[0, 5])
         print("Full dataset loaded.", flush=True)
     else:
         target_per_class = sample_size // 2
@@ -84,11 +90,7 @@ def load_data(path, sample_size=None):
         pos_count = 0
 
         for chunk in pd.read_csv(
-            path,
-            encoding="latin-1",
-            header=None,
-            usecols=[0, 5],
-            chunksize=50000
+            path, encoding=encoding, header=None, usecols=[0, 5], chunksize=50000
         ):
             chunk.columns = ["polarity", "text"]
 
@@ -119,7 +121,7 @@ def load_data(path, sample_size=None):
         df = pd.concat(neg_parts + pos_parts, ignore_index=True)
         print(
             f"Collected balanced sample -> Negative: {neg_count}, Positive: {pos_count}",
-            flush=True
+            flush=True,
         )
 
     if "polarity" not in df.columns or "text" not in df.columns:
@@ -155,7 +157,7 @@ def preprocess_and_split(df):
         df["polarity"],
         test_size=0.2,
         random_state=42,
-        stratify=df["polarity"]
+        stratify=df["polarity"],
     )
 
     vectorizer = TfidfVectorizer(max_features=5000, ngram_range=(1, 2))
