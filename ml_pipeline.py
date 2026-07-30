@@ -1,17 +1,19 @@
-import pandas as pd
 import time
+
+import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.naive_bayes import BernoulliNB
-from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
-from sklearn.metrics import accuracy_score, confusion_matrix
 
 TEXT_COLUMNS = ("text", "tweet", "tweet_text", "content", "full_text", "message")
 LABEL_COLUMNS = ("polarity", "sentiment", "label", "target")
 POSITIVE_LABELS = {"1", "1.0", "4", "4.0", "positive", "pos"}
 NEGATIVE_LABELS = {"0", "0.0", "negative", "neg"}
-CSV_ENCODINGS = ("utf-8-sig", "latin-1")
+LEGACY_SENTIMENT140_ENCODING = "latin-1"
+CSV_ENCODINGS = ("utf-8-sig", LEGACY_SENTIMENT140_ENCODING)
 
 
 def _find_column(columns, candidates):
@@ -52,12 +54,17 @@ def _normalize_export_dataframe(df):
     return normalized
 
 
-def _read_csv_header(path):
+def _read_export_dataframe(path):
     for encoding in CSV_ENCODINGS:
         if hasattr(path, "seek"):
             path.seek(0)
         try:
-            return pd.read_csv(path, encoding=encoding), encoding
+            header_df = pd.read_csv(path, encoding=encoding, nrows=0)
+            if _normalize_export_dataframe(header_df) is None:
+                return None
+            if hasattr(path, "seek"):
+                path.seek(0)
+            return _normalize_export_dataframe(pd.read_csv(path, encoding=encoding))
         except UnicodeDecodeError:
             continue
     raise ValueError("Uploaded CSV could not be decoded.")
@@ -66,8 +73,7 @@ def _read_csv_header(path):
 def load_data(path, sample_size=None):
     print("Loading dataset...", flush=True)
 
-    header_df, encoding = _read_csv_header(path)
-    normalized_export = _normalize_export_dataframe(header_df)
+    normalized_export = _read_export_dataframe(path)
     if normalized_export is not None:
         if sample_size is not None and len(normalized_export) > sample_size:
             normalized_export = normalized_export.sample(n=sample_size, random_state=42)
@@ -78,6 +84,7 @@ def load_data(path, sample_size=None):
         return normalized_export
     if hasattr(path, "seek"):
         path.seek(0)
+    encoding = LEGACY_SENTIMENT140_ENCODING
 
     if sample_size is None:
         df = pd.read_csv(path, encoding=encoding, header=None, usecols=[0, 5])
