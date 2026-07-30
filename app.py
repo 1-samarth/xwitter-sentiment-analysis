@@ -104,7 +104,10 @@ uploaded_file = st.file_uploader(
     "Drag and drop or browse files (CSV)",
     type=["csv"],
     accept_multiple_files=False,
-    help="Upload Sentiment140 CSV file",
+    help=(
+        "Upload Sentiment140, or Xquik/export CSVs with a text column and "
+        "a sentiment, polarity, label, or target column."
+    ),
     key="file_uploader"
 )
 

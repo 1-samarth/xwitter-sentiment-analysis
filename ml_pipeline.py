@@ -1,23 +1,93 @@
-import pandas as pd
 import time
+
+import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.naive_bayes import BernoulliNB
-from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
-from sklearn.metrics import accuracy_score, confusion_matrix
+
+TEXT_COLUMNS = ("text", "tweet", "tweet_text", "content", "full_text", "message")
+LABEL_COLUMNS = ("polarity", "sentiment", "label", "target")
+POSITIVE_LABELS = {"1", "1.0", "4", "4.0", "positive", "pos"}
+NEGATIVE_LABELS = {"0", "0.0", "negative", "neg"}
+LEGACY_SENTIMENT140_ENCODING = "latin-1"
+CSV_ENCODINGS = ("utf-8-sig", LEGACY_SENTIMENT140_ENCODING)
+
+
+def _find_column(columns, candidates):
+    normalized = {str(column).strip().lower(): column for column in columns}
+    for candidate in candidates:
+        if candidate in normalized:
+            return normalized[candidate]
+    return None
+
+
+def _normalize_label(value):
+    normalized = str(value).strip().lower()
+    if normalized in POSITIVE_LABELS:
+        return 1
+    if normalized in NEGATIVE_LABELS:
+        return 0
+    return None
+
+
+def _normalize_export_dataframe(df):
+    text_column = _find_column(df.columns, TEXT_COLUMNS)
+    label_column = _find_column(df.columns, LABEL_COLUMNS)
+    if text_column is None:
+        return None
+    if label_column is None:
+        raise ValueError(
+            "Uploaded Xquik/export CSV needs a sentiment, polarity, label, or target column."
+        )
+
+    normalized = pd.DataFrame(
+        {
+            "text": df[text_column],
+            "polarity": df[label_column].map(_normalize_label),
+        }
+    )
+    normalized = normalized.dropna(subset=["text", "polarity"])
+    normalized["polarity"] = normalized["polarity"].astype(int)
+    return normalized
+
+
+def _read_export_dataframe(path):
+    for encoding in CSV_ENCODINGS:
+        if hasattr(path, "seek"):
+            path.seek(0)
+        try:
+            header_df = pd.read_csv(path, encoding=encoding, nrows=0)
+            if _normalize_export_dataframe(header_df) is None:
+                return None
+            if hasattr(path, "seek"):
+                path.seek(0)
+            return _normalize_export_dataframe(pd.read_csv(path, encoding=encoding))
+        except UnicodeDecodeError:
+            continue
+    raise ValueError("Uploaded CSV could not be decoded.")
 
 
 def load_data(path, sample_size=None):
     print("Loading dataset...", flush=True)
 
+    normalized_export = _read_export_dataframe(path)
+    if normalized_export is not None:
+        if sample_size is not None and len(normalized_export) > sample_size:
+            normalized_export = normalized_export.sample(n=sample_size, random_state=42)
+        normalized_export = normalized_export.sample(
+            frac=1, random_state=42
+        ).reset_index(drop=True)
+        print(f"Loaded uploaded export rows: {len(normalized_export)}", flush=True)
+        return normalized_export
+    if hasattr(path, "seek"):
+        path.seek(0)
+    encoding = LEGACY_SENTIMENT140_ENCODING
+
     if sample_size is None:
-        df = pd.read_csv(
-            path,
-            encoding="latin-1",
-            header=None,
-            usecols=[0, 5]
-        )
+        df = pd.read_csv(path, encoding=encoding, header=None, usecols=[0, 5])
         print("Full dataset loaded.", flush=True)
     else:
         target_per_class = sample_size // 2
@@ -27,11 +97,7 @@ def load_data(path, sample_size=None):
         pos_count = 0
 
         for chunk in pd.read_csv(
-            path,
-            encoding="latin-1",
-            header=None,
-            usecols=[0, 5],
-            chunksize=50000
+            path, encoding=encoding, header=None, usecols=[0, 5], chunksize=50000
         ):
             chunk.columns = ["polarity", "text"]
 
@@ -62,7 +128,7 @@ def load_data(path, sample_size=None):
         df = pd.concat(neg_parts + pos_parts, ignore_index=True)
         print(
             f"Collected balanced sample -> Negative: {neg_count}, Positive: {pos_count}",
-            flush=True
+            flush=True,
         )
 
     if "polarity" not in df.columns or "text" not in df.columns:
@@ -98,7 +164,7 @@ def preprocess_and_split(df):
         df["polarity"],
         test_size=0.2,
         random_state=42,
-        stratify=df["polarity"]
+        stratify=df["polarity"],
     )
 
     vectorizer = TfidfVectorizer(max_features=5000, ngram_range=(1, 2))
